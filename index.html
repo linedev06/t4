@@ -1616,53 +1616,19 @@ document.querySelectorAll('.reason').forEach(function(r){ reasonObserver.observe
       });
       toRemove.forEach(function(node){ if(node.parent) node.parent.remove(node); });
 
-      /* o modelo original vem com uma inclinação "de mockup" (o
-         "Container Rotation" do arquivo). Em vez de adivinhar o
-         ângulo, calculamos a normal real da tela (pela geometria)
-         e giramos o objeto inteiro pra ela ficar perfeitamente de
-         frente pra câmera e "em pé" — assim ele sempre termina reto,
-         não importa como veio o modelo. */
+      /* achamos, inspecionando o arquivo diretamente, que quem carrega
+         a inclinação "de mockup" (~49° no eixo Y) é o nó "iPhone 14 Pro"
+         em si — não o "Container Rotation" (esse já vem sem rotação).
+         Zeramos só a rotação desse nó específico, mantendo posição e
+         escala, para o conjunto ficar perfeitamente reto e de frente. */
+      model.traverse(function(node){
+        if(/iphone/i.test(node.name)){
+          node.rotation.set(0,0,0);
+          node.quaternion.identity();
+          node.updateMatrix();
+        }
+      });
       model.updateMatrixWorld(true);
-      if(screenNode){
-        var geo = screenNode.geometry;
-        var nAttr = geo.attributes.normal;
-        var avgNormal = new THREE.Vector3();
-        if(nAttr){
-          for(var i=0;i<nAttr.count;i++){
-            avgNormal.x += nAttr.getX(i);
-            avgNormal.y += nAttr.getY(i);
-            avgNormal.z += nAttr.getZ(i);
-          }
-          avgNormal.divideScalar(nAttr.count);
-        }
-        if(avgNormal.lengthSq() < 1e-6) avgNormal.set(0,0,1);
-        avgNormal.normalize();
-        var normalMatrix = new THREE.Matrix3().getNormalMatrix(screenNode.matrixWorld);
-        avgNormal.applyMatrix3(normalMatrix).normalize();
-
-        var upVec = new THREE.Vector3(0,1,0).transformDirection(screenNode.matrixWorld).normalize();
-
-        var targetForward = new THREE.Vector3(0,0,1);
-        var targetUp = new THREE.Vector3(0,1,0);
-
-        var q1 = new THREE.Quaternion().setFromUnitVectors(avgNormal, targetForward);
-        var upAfterQ1 = upVec.clone().applyQuaternion(q1).normalize();
-
-        function projectOnPlane(v,n){ return v.clone().sub(n.clone().multiplyScalar(v.dot(n))); }
-        var upProj = projectOnPlane(upAfterQ1, targetForward);
-        var targetUpProj = projectOnPlane(targetUp, targetForward);
-        if(upProj.lengthSq() > 1e-6 && targetUpProj.lengthSq() > 1e-6){
-          upProj.normalize(); targetUpProj.normalize();
-          var angle = upProj.angleTo(targetUpProj);
-          var cross = new THREE.Vector3().crossVectors(upProj, targetUpProj);
-          if(cross.dot(targetForward) < 0) angle = -angle;
-          var q2 = new THREE.Quaternion().setFromAxisAngle(targetForward, angle);
-          q1.premultiply(q2);
-        }
-
-        model.quaternion.premultiply(q1);
-        model.updateMatrixWorld(true);
-      }
 
       /* centraliza e normaliza a escala do modelo para caber no palco
          (bounding box calculado já sem o chão removido, e já com a
